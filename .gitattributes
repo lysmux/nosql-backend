@@ -1,0 +1,12 @@
+# Единые переносы строк в репозитории независимо от платформы разработчика
+* text=auto eol=lf
+
+# Скрипт запускается внутри Linux-контейнера: CRLF ломает shebang
+gradlew text eol=lf
+*.sh text eol=lf
+
+# Только для Windows
+gradlew.bat text eol=crlf
+*.cmd text eol=crlf
+
+*.jar binary

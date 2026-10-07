@@ -1,0 +1,54 @@
+name: delivery
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: delivery
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "app", "-d", "delivery"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  riak:
+    image: registry.dc.lysmux.dev/cicd/riak-kv:3.4.1
+    hostname: riak
+    environment:
+      RIAK_NODENAME: riak@riak
+      RIAK_DISTRIBUTED_COOKIE: cookie
+    ports:
+      - "8087:8087"
+      - "8098:8098"
+    volumes:
+      - riak_data:/opt/riak/data
+      - ./docker/riak/listeners.conf:/etc/riak/conf.d/listeners.conf:ro
+      - ./docker/riak/init-bucket-types.sh:/usr/local/bin/init-bucket-types.sh:ro
+    post_start:
+      - command: sh /usr/local/bin/init-bucket-types.sh
+    healthcheck:
+      test: ["CMD-SHELL", "USE_NODETOOL=false riak eval 'riak_core_bucket_type:status(<<\"counters\">>).' | grep -qx active"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+  mongo:
+    image: mongo:9
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: password
+      MONGO_INITDB_DATABASE: delivery
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+volumes:
+  postgres_data:
+  riak_data:
+  mongo_data:

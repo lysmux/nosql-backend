@@ -1,0 +1,1998 @@
+openapi: 3.0.0
+info:
+  title: Сервис доставки еды
+  version: 1.0.0
+tags:
+  - name: Аутентификация
+  - name: Личный кабинет
+  - name: Рестораны
+  - name: Меню
+  - name: Заказы
+  - name: Уведомления
+paths:
+  /auth/login:
+    post:
+      operationId: Auth_login
+      description: 'Вход пользователя по email и паролю: создаёт сессию и ставит cookie session_token. Успешный защищённый запрос продлевает TTL сессии до 30 минут'
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          headers:
+            Set-Cookie:
+              required: true
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '400':
+          description: 'Некорректный запрос: тело или параметры не прошли валидацию'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequest'
+        '401':
+          description: Неверные email или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvalidCredentials'
+        '500':
+          description: Непредвиденная ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalError'
+        '503':
+          description: Хранилище временно недоступно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceUnavailable'
+      tags:
+        - Аутентификация
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      security:
+        - {}
+  /auth/logout:
+    post:
+      operationId: Auth_logout
+      description: Удаляет текущую сессию и сбрасывает cookie
+      parameters: []
+      responses:
+        '204':
+          description: 'There is no content to send for this request, but the headers may be useful. '
+          headers:
+            Set-Cookie:
+              required: true
+              schema:
+                type: string
+        '401':
+          description: Требуется действующая сессия
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Unauthorized'
+        '403':
+          description: Недостаточно прав для операции
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Forbidden'
+        '500':
+          description: Непредвиденная ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalError'
+        '503':
+          description: Хранилище временно недоступно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceUnavailable'
+      tags:
+        - Аутентификация
+  /auth/register:
+    post:
+      operationId: Auth_register
+      description: Регистрация пользователя без автоматического входа. Email нормализуется (trim/lowercase) и уникален. courierModeEnabled=false
+      parameters: []
+      responses:
+        '201':
+          description: The request has succeeded and a new resource has been created as a result.
+        '400':
+          description: 'Некорректный запрос: тело или параметры не прошли валидацию'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequest'
+        '409':
+          description: Email уже зарегистрирован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailConflict'
+        '500':
+          description: Непредвиденная ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalError'
+        '503':
+          description: Хранилище временно недоступно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceUnavailable'
+      tags:
+        - Аутентификация
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      security:
+        - {}
+  /notifications:
+    get:
+      operationId: Notifications_feed
+      description: 'Только пользователь: своя сохранённая лента, createdAt DESC, notificationId DESC. Нет признака/операции прочтения. После обрыва SSE клиент перечитывает ленту и объединяет по notificationId'
+      parameters:
+        - $ref: '#/components/parameters/Pagination.page'
+        - $ref: '#/components/parameters/Pagination.size'
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationPage'
+        '400':
+          description: 'Некорректный запрос: тело или параметры не прошли валидацию'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequest'
+        '401':
+          description: Требуется действующая сессия
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Unauthorized'
+        '403':
+          description: Недостаточно прав для операции
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Forbidden'
+        '500':
+          description: Непредвиденная ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalError'
+        '503':
+          description: Хранилище временно недоступно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceUnavailable'
+      tags:
+        - Уведомления
+  /notifications/stream:
+    get:
+      operationId: Notifications_stream
+      description: |-
+        Только пользователь. Проверяется cookie session_token.
+        Новые уведомления доставляются событием notification: id=notificationId, data=JSON Notification.
+        Поток доставляет только живые события; Last-Event-ID не обеспечивает replay и не используется для восстановления.
+        После переподключения читать GET /notifications; дедупликация по notificationId.
+        Комментарии heartbeat отправляются раз в 15 секунд и не продлевают сессию.
+        При выходе или истечении сессии поток закрывается; повторное подключение отклоняется.
+        Ошибки JSON возможны только до открытия потока; при сбое открытый поток закрывается
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                enum:
+                  - no-cache
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/NotificationEventStream'
+        '401':
+          description: Требуется действующая сессия
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Unauthorized'
+        '403':
+          description: Недостаточно прав для операции
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Forbidden'
+        '500':
+          description: Непредвиденная ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalError'
+        '503':
+          description: Хранилище временно недоступно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceUnavailable'
+      tags:
+        - Уведомления
+  /orders:
+    post:
+      operationId: Orders_create
+      description: Только пользователь. Проверяет доступность блюд, считает итоговую сумму и создаёт заказ в статусе CREATED
+      parameters: []
+      responses:
+        '201':
+          description: The request has succeeded and a new resource has been created as a result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderDetails'
+        '400':
+          description: 'Некорректный запрос: тело или параметры не прошли валидацию'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequest'
+        '401':
+          description: Требуется действующая сессия
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Unauthorized'
+        '403':
+          description: Недостаточно прав для операции
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Forbidden'
+        '404':
+          description: Объект не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFound'
+        '409':
+          description: Блюдо недоступно или архивировано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderItemsConflict'
+        '500':
+          description: Непредвиденная ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalError'
+        '503':
+          description: Хранилище временно недоступно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceUnavailable'
+      tags:
+        - Заказы
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+    get:
+      operationId: Orders_list
+      description: 'scope обязателен: CUSTOMER — свои покупки; RESTAURANT — заказы моих ресторанов (опционально фильтр restaurantId); COURIER — мои назначения. Без status — вся доступная история. Сортировка createdAt DESC, orderId DESC'
+      parameters:
+        - name: scope
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/OrderScope'
+          explode: false
+        - name: restaurantId
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/uuid'
+          explode: false
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/OrderStatus'
+          explode: false
+        - $ref: '#/components/parameters/Pagination.page'
+        - $ref: '#/components/parameters/Pagination.size'
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderPage'
+        '400':
+          description: 'Некорректный запрос: тело или параметры не прошли валидацию'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequest'
+        '401':
+          description: Требуется действующая сессия
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Unauthorized'
+        '403':
+          description: Недостаточно прав для операции
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Forbidden'
+        '404':
+          description: Заказ не существует или недоступен текущему аккаунту
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderNotFound'
+        '500':
+          description: Непредвиденная ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalError'
+        '503':
+          description: Хранилище временно недоступно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceUnavailable'
+      tags:
+        - Заказы
+  /orders/{orderId}:
+    get:
+      operationId: Orders_read
+      description: Детали доступны клиенту-владельцу, владельцу ресторана заказа или назначенному курьеру с включённым режимом
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/uuid'
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderDetails'
+        '400':
+          description: 'Некорректный запрос: тело или параметры не прошли валидацию'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequest'
+        '401':
+          description: Требуется действующая сессия
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Unauthorized'
+        '403':
+          description: Недостаточно прав для операции
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Forbidden'
+        '404':
+          description: Заказ не существует или недоступен текущему аккаунту
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderNotFound'
+        '500':
+          description: Непредвиденная ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalError'
+        '503':
+          description: Хранилище временно недоступно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceUnavailable'
+      tags:
+        - Заказы
+  /orders/{orderId}/cancel:
+    post:
+      operationId: Orders_cancel
+      description: Клиент-владелец отменяет только CREATED; владелец ресторана заказа — CREATED, COOKING, READY. Переход в CANCELLED освобождает назначенного курьера. DELIVERED/CANCELLED конечны. Назначенный курьер отменять не может
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/uuid'
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderDetails'
+        '400':
+          description: 'Некорректный запрос: тело или параметры не прошли валидацию'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequest'
+        '401':
+          description: Требуется действующая сессия
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Unauthorized'
+        '403':
+          description: Недостаточно прав для операции
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Forbidden'
+        '404':
+          description: Заказ не существует или недоступен текущему аккаунту
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderNotFound'
+        '409':
+          description: Недопустимый переход из текущего статуса заказа
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderStatusConflict'
+        '500':
+          description: Непредвиденная ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalError'
+        '503':
+          description: Хранилище временно недоступно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceUnavailable'
+      tags:
+        - Заказы
+  /orders/{orderId}/deliver:
+    post:
+      operationId: Orders_deliver
+      description: 'Только назначенный курьер с включённым режимом: IN_DELIVERY → DELIVERED. Курьер освобождается'
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/uuid'
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderDetails'
+        '400':
+          description: 'Некорректный запрос: тело или параметры не прошли валидацию'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequest'
+        '401':
+          description: Требуется действующая сессия
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Unauthorized'
+        '403':
+          description: Недостаточно прав для операции
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Forbidden'
+        '404':
+          description: Заказ не существует или недоступен текущему аккаунту
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderNotFound'
+        '409':
+          description: Недопустимый переход из текущего статуса заказа
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderStatusConflict'
+        '500':
+          description: Непредвиденная ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalError'
+        '503':
+          description: Хранилище временно недоступно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceUnavailable'
+      tags:
+        - Заказы
+  /orders/{orderId}/mark-ready:
+    post:
+      operationId: Orders_markReady
+      description: 'Только владелец ресторана заказа: COOKING → READY. Свободный курьер назначается случайно. Если свободных нет, заказ ждёт в READY. Назначение не меняет статус'
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/uuid'
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderDetails'
+        '400':
+          description: 'Некорректный запрос: тело или параметры не прошли валидацию'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequest'
+        '401':
+          description: Требуется действующая сессия
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Unauthorized'
+        '403':
+          description: Недостаточно прав для операции
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Forbidden'
+        '404':
+          description: Заказ не существует или недоступен текущему аккаунту
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderNotFound'
+        '409':
+          description: Недопустимый переход из текущего статуса заказа
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderStatusConflict'
+        '500':
+          description: Непредвиденная ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalError'
+        '503':
+          description: Хранилище временно недоступно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceUnavailable'
+      tags:
+        - Заказы
+  /orders/{orderId}/pickup:
+    post:
+      operationId: Orders_pickup
+      description: 'Только назначенный курьер с включённым режимом: READY → IN_DELIVERY. Конкурирует с отменой: применяется только одно из действий'
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/uuid'
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderDetails'
+        '400':
+          description: 'Некорректный запрос: тело или параметры не прошли валидацию'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequest'
+        '401':
+          description: Требуется действующая сессия
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Unauthorized'
+        '403':
+          description: Недостаточно прав для операции
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Forbidden'
+        '404':
+          description: Заказ не существует или недоступен текущему аккаунту
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderNotFound'
+        '409':
+          description: Недопустимый переход из текущего статуса заказа
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderStatusConflict'
+        '500':
+          description: Непредвиденная ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalError'
+        '503':
+          description: Хранилище временно недоступно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceUnavailable'
+      tags:
+        - Заказы
+  /orders/{orderId}/start-preparation:
+    post:
+      operationId: Orders_startPreparation
+      description: 'Только владелец ресторана заказа: CREATED → COOKING'
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/uuid'
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderDetails'
+        '400':
+          description: 'Некорректный запрос: тело или параметры не прошли валидацию'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequest'
+        '401':
+          description: Требуется действующая сессия
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Unauthorized'
+        '403':
+          description: Недостаточно прав для операции
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Forbidden'
+        '404':
+          description: Заказ не существует или недоступен текущему аккаунту
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderNotFound'
+        '409':
+          description: Недопустимый переход из текущего статуса заказа
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderStatusConflict'
+        '500':
+          description: Непредвиденная ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalError'
+        '503':
+          description: Хранилище временно недоступно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceUnavailable'
+      tags:
+        - Заказы
+  /restaurants:
+    get:
+      operationId: Restaurants_list
+      description: Каталог ресторанов; mine — только свои
+      parameters:
+        - name: mine
+          in: query
+          required: false
+          schema:
+            type: boolean
+          explode: false
+        - $ref: '#/components/parameters/Pagination.page'
+        - $ref: '#/components/parameters/Pagination.size'
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestaurantPage'
+        '400':
+          description: 'Некорректный запрос: тело или параметры не прошли валидацию'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequest'
+        '401':
+          description: Требуется действующая сессия
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Unauthorized'
+        '500':
+          description: Непредвиденная ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalError'
+        '503':
+          description: Хранилище временно недоступно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceUnavailable'
+      tags:
+        - Рестораны
+      security:
+        - {}
+    post:
+      operationId: Restaurants_create
+      description: Создать свой ресторан
+      parameters: []
+      responses:
+        '201':
+          description: The request has succeeded and a new resource has been created as a result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Restaurant'
+        '400':
+          description: 'Некорректный запрос: тело или параметры не прошли валидацию'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequest'
+        '401':
+          description: Требуется действующая сессия
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Unauthorized'
+        '500':
+          description: Непредвиденная ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalError'
+        '503':
+          description: Хранилище временно недоступно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceUnavailable'
+      tags:
+        - Рестораны
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRestaurantRequest'
+  /restaurants/{restaurantId}:
+    get:
+      operationId: Restaurants_read
+      description: Публичный профиль ресторана
+      parameters:
+        - name: restaurantId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/uuid'
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Restaurant'
+        '400':
+          description: 'Некорректный запрос: тело или параметры не прошли валидацию'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequest'
+        '404':
+          description: Объект не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFound'
+        '500':
+          description: Непредвиденная ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalError'
+        '503':
+          description: Хранилище временно недоступно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceUnavailable'
+      tags:
+        - Рестораны
+      security:
+        - {}
+    patch:
+      operationId: Restaurants_update
+      description: Редактирование своего ресторана
+      parameters:
+        - name: restaurantId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/uuid'
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Restaurant'
+        '400':
+          description: 'Некорректный запрос: тело или параметры не прошли валидацию'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequest'
+        '401':
+          description: Требуется действующая сессия
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Unauthorized'
+        '403':
+          description: Недостаточно прав для операции
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Forbidden'
+        '404':
+          description: Объект не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFound'
+        '500':
+          description: Непредвиденная ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalError'
+        '503':
+          description: Хранилище временно недоступно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceUnavailable'
+      tags:
+        - Рестораны
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRestaurantRequest'
+  /restaurants/{restaurantId}/menu-items:
+    get:
+      operationId: Menu_list
+      description: Меню ресторана; includeUnavailable показывает недоступные блюда владельцу. Архивированные блюда не возвращаются. Сортировка name ASC, menuItemId ASC
+      parameters:
+        - name: restaurantId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/uuid'
+        - name: includeUnavailable
+          in: query
+          required: false
+          schema:
+            type: boolean
+          explode: false
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MenuItem'
+        '400':
+          description: 'Некорректный запрос: тело или параметры не прошли валидацию'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequest'
+        '401':
+          description: Требуется действующая сессия
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Unauthorized'
+        '403':
+          description: Недостаточно прав для операции
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Forbidden'
+        '404':
+          description: Объект не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFound'
+        '500':
+          description: Непредвиденная ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalError'
+        '503':
+          description: Хранилище временно недоступно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceUnavailable'
+      tags:
+        - Меню
+      security:
+        - {}
+    post:
+      operationId: Menu_create
+      description: Создать блюдо в своём ресторане
+      parameters:
+        - name: restaurantId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/uuid'
+      responses:
+        '201':
+          description: The request has succeeded and a new resource has been created as a result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MenuItem'
+        '400':
+          description: 'Некорректный запрос: тело или параметры не прошли валидацию'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequest'
+        '401':
+          description: Требуется действующая сессия
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Unauthorized'
+        '403':
+          description: Недостаточно прав для операции
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Forbidden'
+        '404':
+          description: Объект не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFound'
+        '409':
+          description: Операция конфликтует с текущим состоянием
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Conflict'
+        '500':
+          description: Непредвиденная ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalError'
+        '503':
+          description: Хранилище временно недоступно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceUnavailable'
+      tags:
+        - Меню
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMenuItemRequest'
+  /restaurants/{restaurantId}/menu-items/{menuItemId}:
+    patch:
+      operationId: Menu_update
+      description: Изменить своё неархивированное блюдо
+      parameters:
+        - name: restaurantId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/uuid'
+        - name: menuItemId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/uuid'
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MenuItem'
+        '400':
+          description: 'Некорректный запрос: тело или параметры не прошли валидацию'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequest'
+        '401':
+          description: Требуется действующая сессия
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Unauthorized'
+        '403':
+          description: Недостаточно прав для операции
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Forbidden'
+        '404':
+          description: Объект не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFound'
+        '409':
+          description: Операция конфликтует с текущим состоянием
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Conflict'
+        '500':
+          description: Непредвиденная ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalError'
+        '503':
+          description: Хранилище временно недоступно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceUnavailable'
+      tags:
+        - Меню
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMenuItemRequest'
+    delete:
+      operationId: Menu_remove
+      description: Архивирует блюдо своего ресторана, исключая его из нового заказа и списков меню
+      parameters:
+        - name: restaurantId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/uuid'
+        - name: menuItemId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/uuid'
+      responses:
+        '204':
+          description: 'There is no content to send for this request, but the headers may be useful. '
+        '400':
+          description: 'Некорректный запрос: тело или параметры не прошли валидацию'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequest'
+        '401':
+          description: Требуется действующая сессия
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Unauthorized'
+        '403':
+          description: Недостаточно прав для операции
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Forbidden'
+        '404':
+          description: Объект не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFound'
+        '409':
+          description: Операция конфликтует с текущим состоянием
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Conflict'
+        '500':
+          description: Непредвиденная ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalError'
+        '503':
+          description: Хранилище временно недоступно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceUnavailable'
+      tags:
+        - Меню
+  /restaurants/{restaurantId}/visits:
+    post:
+      operationId: Restaurants_registerVisit
+      description: 'Регистрирует просмотр страницы ресторана: увеличивает счётчик на 1 и возвращает текущее значение'
+      parameters:
+        - name: restaurantId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/uuid'
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestaurantVisitCounter'
+        '400':
+          description: 'Некорректный запрос: тело или параметры не прошли валидацию'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequest'
+        '404':
+          description: Объект не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFound'
+        '500':
+          description: Непредвиденная ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalError'
+        '503':
+          description: Хранилище временно недоступно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceUnavailable'
+      tags:
+        - Рестораны
+      security:
+        - {}
+    get:
+      operationId: Restaurants_readVisits
+      description: Текущее значение счётчика просмотров страницы ресторана
+      parameters:
+        - name: restaurantId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/uuid'
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestaurantVisitCounter'
+        '400':
+          description: 'Некорректный запрос: тело или параметры не прошли валидацию'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequest'
+        '404':
+          description: Объект не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFound'
+        '500':
+          description: Непредвиденная ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalError'
+        '503':
+          description: Хранилище временно недоступно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceUnavailable'
+      tags:
+        - Рестораны
+      security:
+        - {}
+  /users/me:
+    get:
+      operationId: Users_me
+      description: Профиль текущего пользователя. Пароль не возвращается
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          description: Требуется действующая сессия
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Unauthorized'
+        '403':
+          description: Недостаточно прав для операции
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Forbidden'
+        '500':
+          description: Непредвиденная ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalError'
+        '503':
+          description: Хранилище временно недоступно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceUnavailable'
+      tags:
+        - Личный кабинет
+  /users/me/courier-mode:
+    put:
+      operationId: Users_setCourierMode
+      description: Включает или выключает режим курьера у текущего пользователя. Повторная установка того же значения допустима
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: 'Некорректный запрос: тело или параметры не прошли валидацию'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequest'
+        '401':
+          description: Требуется действующая сессия
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Unauthorized'
+        '403':
+          description: Недостаточно прав для операции
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Forbidden'
+        '409':
+          description: Нельзя выключить режим курьера при активном назначении
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourierModeConflict'
+        '500':
+          description: Непредвиденная ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalError'
+        '503':
+          description: Хранилище временно недоступно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceUnavailable'
+      tags:
+        - Личный кабинет
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CourierModeRequest'
+security:
+  - ApiKeyAuth: []
+components:
+  parameters:
+    Pagination.page:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int32
+        minimum: 0
+        default: 0
+      explode: false
+    Pagination.size:
+      name: size
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 100
+        default: 20
+      explode: false
+  schemas:
+    ActorType:
+      type: string
+      enum:
+        - USER
+        - RESTAURANT
+        - SYSTEM
+    BadRequest:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/ErrorBody'
+      description: 'Некорректный запрос: тело или параметры не прошли валидацию'
+    Conflict:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/ErrorBody'
+      description: Операция конфликтует с текущим состоянием
+    CourierModeConflict:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/ErrorBody'
+      description: Нельзя выключить режим курьера при активном назначении
+    CourierModeRequest:
+      type: object
+      required:
+        - enabled
+      properties:
+        enabled:
+          type: boolean
+    CreateMenuItemRequest:
+      type: object
+      required:
+        - name
+        - price
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+          maxLength: 2000
+        price:
+          $ref: '#/components/schemas/money'
+        available:
+          type: boolean
+          default: true
+    CreateOrderRequest:
+      type: object
+      required:
+        - restaurantId
+        - items
+        - deliveryAddress
+      properties:
+        restaurantId:
+          $ref: '#/components/schemas/uuid'
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItemRequest'
+          minItems: 1
+          maxItems: 100
+        deliveryAddress:
+          type: string
+          minLength: 1
+          maxLength: 500
+      description: Корзина клиентская. Без userId, courierId, цен и итоговой суммы. Позиции не повторяются и принадлежат одному ресторану; блюда должны быть доступны
+    CreateRestaurantRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+    EmailConflict:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/ErrorBody'
+      description: Email уже зарегистрирован
+    ErrorBody:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          $ref: '#/components/schemas/ErrorCode'
+        message:
+          type: string
+    ErrorCode:
+      type: string
+      enum:
+        - validation_failed
+        - invalid_credentials
+        - session_expired
+        - forbidden
+        - not_found
+        - conflict
+        - service_unavailable
+        - internal_error
+    Forbidden:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/ErrorBody'
+      description: Недостаточно прав для операции
+    InternalError:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/ErrorBody'
+      description: Непредвиденная ошибка сервера
+    InvalidCredentials:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/ErrorBody'
+      description: Неверные email или пароль
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          $ref: '#/components/schemas/email'
+        password:
+          type: string
+          minLength: 1
+          maxLength: 128
+          format: password
+    MenuItem:
+      type: object
+      required:
+        - menuItemId
+        - restaurantId
+        - name
+        - price
+        - available
+        - createdAt
+        - updatedAt
+      properties:
+        menuItemId:
+          $ref: '#/components/schemas/uuid'
+        restaurantId:
+          $ref: '#/components/schemas/uuid'
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          $ref: '#/components/schemas/money'
+        available:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    NotFound:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/ErrorBody'
+      description: Объект не найден
+    Notification:
+      type: object
+      required:
+        - notificationId
+        - userId
+        - orderId
+        - eventType
+        - status
+        - text
+        - createdAt
+      properties:
+        notificationId:
+          $ref: '#/components/schemas/uuid'
+        userId:
+          $ref: '#/components/schemas/uuid'
+        orderId:
+          $ref: '#/components/schemas/uuid'
+        eventType:
+          $ref: '#/components/schemas/NotificationEventType'
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        text:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    NotificationEventStream:
+      type: string
+      description: Поток SSE с кадрами NotificationFrame
+    NotificationEventType:
+      type: string
+      enum:
+        - ORDER_CREATED
+        - ORDER_STATUS_CHANGED
+    NotificationEvents:
+      $ref: '#/components/schemas/NotificationFrame'
+    NotificationFrame:
+      type: object
+      required:
+        - id
+        - data
+      properties:
+        id:
+          $ref: '#/components/schemas/uuid'
+        data:
+          $ref: '#/components/schemas/Notification'
+      description: 'Кадр SSE: id совпадает с data.notificationId, имя события notification'
+    NotificationPage:
+      type: object
+      required:
+        - items
+        - page
+        - pageSize
+        - totalItems
+        - totalPages
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Notification'
+        page:
+          type: integer
+          format: int32
+          minimum: 0
+        pageSize:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 100
+        totalItems:
+          type: integer
+          format: int64
+          minimum: 0
+        totalPages:
+          type: integer
+          format: int32
+          minimum: 0
+    Order:
+      type: object
+      required:
+        - orderId
+        - userId
+        - restaurantId
+        - restaurantName
+        - items
+        - deliveryAddress
+        - totalAmount
+        - status
+        - courierId
+        - createdAt
+        - updatedAt
+      properties:
+        orderId:
+          $ref: '#/components/schemas/uuid'
+        userId:
+          $ref: '#/components/schemas/uuid'
+        restaurantId:
+          $ref: '#/components/schemas/uuid'
+        restaurantName:
+          type: string
+          description: Снимок названия ресторана на момент оформления
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItem'
+          minItems: 1
+          maxItems: 100
+        deliveryAddress:
+          type: string
+        totalAmount:
+          $ref: '#/components/schemas/money'
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        courierId:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/uuid'
+          nullable: true
+          description: null до назначения и после отмены; сохраняется после доставки
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    OrderDetails:
+      type: object
+      required:
+        - history
+      properties:
+        history:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatusHistoryEntry'
+          description: История от первого перехода к последнему
+      allOf:
+        - $ref: '#/components/schemas/Order'
+    OrderItem:
+      type: object
+      required:
+        - menuItemId
+        - name
+        - unitPrice
+        - quantity
+        - lineTotal
+      properties:
+        menuItemId:
+          $ref: '#/components/schemas/uuid'
+        name:
+          type: string
+          description: Название блюда на момент оформления
+        unitPrice:
+          allOf:
+            - $ref: '#/components/schemas/money'
+          description: Цена блюда на момент оформления
+        quantity:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 99
+        lineTotal:
+          $ref: '#/components/schemas/money'
+    OrderItemRequest:
+      type: object
+      required:
+        - menuItemId
+        - quantity
+      properties:
+        menuItemId:
+          $ref: '#/components/schemas/uuid'
+        quantity:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 99
+    OrderItemsConflict:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/ErrorBody'
+      description: Блюдо недоступно или архивировано
+    OrderNotFound:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/ErrorBody'
+      description: Заказ не существует или недоступен текущему аккаунту
+    OrderPage:
+      type: object
+      required:
+        - items
+        - page
+        - pageSize
+        - totalItems
+        - totalPages
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Order'
+        page:
+          type: integer
+          format: int32
+          minimum: 0
+        pageSize:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 100
+        totalItems:
+          type: integer
+          format: int64
+          minimum: 0
+        totalPages:
+          type: integer
+          format: int32
+          minimum: 0
+    OrderScope:
+      type: string
+      enum:
+        - CUSTOMER
+        - RESTAURANT
+        - COURIER
+    OrderStatus:
+      type: string
+      enum:
+        - CREATED
+        - COOKING
+        - READY
+        - IN_DELIVERY
+        - DELIVERED
+        - CANCELLED
+    OrderStatusConflict:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/ErrorBody'
+      description: Недопустимый переход из текущего статуса заказа
+    RegisterRequest:
+      type: object
+      required:
+        - name
+        - email
+        - password
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        email:
+          $ref: '#/components/schemas/email'
+        password:
+          $ref: '#/components/schemas/password'
+    Restaurant:
+      type: object
+      required:
+        - restaurantId
+        - name
+        - createdAt
+      properties:
+        restaurantId:
+          $ref: '#/components/schemas/uuid'
+        name:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      description: Публичные сведения; email отсутствует
+    RestaurantPage:
+      type: object
+      required:
+        - items
+        - page
+        - pageSize
+        - totalItems
+        - totalPages
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Restaurant'
+        page:
+          type: integer
+          format: int32
+          minimum: 0
+        pageSize:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 100
+        totalItems:
+          type: integer
+          format: int64
+          minimum: 0
+        totalPages:
+          type: integer
+          format: int32
+          minimum: 0
+    RestaurantVisitCounter:
+      type: object
+      required:
+        - restaurantId
+        - value
+      properties:
+        restaurantId:
+          $ref: '#/components/schemas/uuid'
+        value:
+          type: integer
+          format: int64
+          minimum: 0
+      description: Счётчик просмотров страницы ресторана для аналитики; считает просмотры, а не уникальных посетителей
+    ServiceUnavailable:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/ErrorBody'
+      description: Хранилище временно недоступно
+    Session:
+      type: object
+      required:
+        - userId
+        - expiresAt
+      properties:
+        userId:
+          $ref: '#/components/schemas/uuid'
+        expiresAt:
+          type: string
+          format: date-time
+      description: Токен передаётся только в HttpOnly cookie, не в теле ответа. Сессия истекает после 30 минут бездействия
+    StatusHistoryEntry:
+      type: object
+      required:
+        - fromStatus
+        - toStatus
+        - actorType
+        - actorId
+        - reason
+        - createdAt
+      properties:
+        fromStatus:
+          allOf:
+            - $ref: '#/components/schemas/OrderStatus'
+          nullable: true
+        toStatus:
+          $ref: '#/components/schemas/OrderStatus'
+        actorType:
+          $ref: '#/components/schemas/ActorType'
+        actorId:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/uuid'
+          nullable: true
+          description: null только для SYSTEM
+        reason:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    Unauthorized:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/ErrorBody'
+      description: Требуется действующая сессия
+    UpdateMenuItemRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+          nullable: true
+          maxLength: 2000
+        price:
+          $ref: '#/components/schemas/money'
+        available:
+          type: boolean
+      description: Хотя бы одно поле обязательно. description=null удаляет описание
+      minProperties: 1
+    UpdateRestaurantRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+    User:
+      type: object
+      required:
+        - userId
+        - name
+        - email
+        - courierModeEnabled
+        - createdAt
+      properties:
+        userId:
+          $ref: '#/components/schemas/uuid'
+        name:
+          type: string
+        email:
+          $ref: '#/components/schemas/email'
+        courierModeEnabled:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+    email:
+      type: string
+      maxLength: 254
+      format: email
+    money:
+      type: number
+      format: decimal
+      minimum: 0
+      maximum: 999999999.99
+      description: Сумма в рублях; не более двух знаков после запятой
+      multipleOf: 0.01
+    password:
+      type: string
+      minLength: 8
+      maxLength: 128
+      format: password
+    uuid:
+      type: string
+      format: uuid
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: cookie
+      name: session_token
+servers:
+  - url: http://localhost:8080
+    description: Локальный запуск
+    variables: {}
