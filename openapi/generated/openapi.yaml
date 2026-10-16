@@ -9,7 +9,46 @@ tags:
   - name: Меню
   - name: Заказы
   - name: Уведомления
+  - name: Аналитика
 paths:
+  /analytics/orders-by-restaurant:
+    get:
+      operationId: Analytics_ordersByRestaurant
+      description: 'Заказы по моим ресторанам: всего, доставлено, отменено и выручка. Сортировка total DESC, name ASC'
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrdersByRestaurant'
+        '401':
+          description: Требуется действующая сессия
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Unauthorized'
+        '403':
+          description: Недостаточно прав для операции
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Forbidden'
+        '500':
+          description: Непредвиденная ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InternalError'
+        '503':
+          description: Хранилище временно недоступно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceUnavailable'
+      tags:
+        - Аналитика
   /auth/login:
     post:
       operationId: Auth_login
@@ -1841,6 +1880,15 @@ components:
       allOf:
         - $ref: '#/components/schemas/ErrorBody'
       description: Недопустимый переход из текущего статуса заказа
+    OrdersByRestaurant:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RestaurantOrderStats'
     RegisterRequest:
       type: object
       required:
@@ -1871,6 +1919,33 @@ components:
           type: string
           format: date-time
       description: Публичные сведения; email отсутствует
+    RestaurantOrderStats:
+      type: object
+      required:
+        - restaurantId
+        - name
+        - total
+        - delivered
+        - cancelled
+        - revenue
+      properties:
+        restaurantId:
+          $ref: '#/components/schemas/uuid'
+        name:
+          type: string
+        total:
+          type: integer
+          format: int64
+        delivered:
+          type: integer
+          format: int64
+        cancelled:
+          type: integer
+          format: int64
+        revenue:
+          allOf:
+            - $ref: '#/components/schemas/money'
+          description: Сумма totalAmount доставленных заказов
     RestaurantPage:
       type: object
       required:
