@@ -60,3 +60,28 @@ enum class ActorType {
     RESTAURANT,
     SYSTEM,
 }
+
+data class OrderFilter(
+    val restaurantId: UUID? = null,
+    val status: OrderStatus? = null,
+    val itemName: String? = null,
+    val menuItemId: UUID? = null,
+    val cancelledBy: ActorType? = null,
+)
+
+enum class OrderSortField {
+    CREATED_AT,
+    UPDATED_AT,
+    TOTAL_AMOUNT,
+    STATUS,
+}
+
+enum class SortDirection {
+    ASC,
+    DESC,
+}
+
+data class OrderSort(
+    val field: OrderSortField = OrderSortField.CREATED_AT,
+    val direction: SortDirection = SortDirection.DESC,
+)

@@ -7,7 +7,9 @@ import ru.itmo.delivery.entrypoint.api.model.OrderDto
 import ru.itmo.delivery.entrypoint.api.model.OrderItemDto
 import ru.itmo.delivery.entrypoint.api.model.OrderPageDto
 import ru.itmo.delivery.entrypoint.api.model.OrderScopeDto
+import ru.itmo.delivery.entrypoint.api.model.OrderSortFieldDto
 import ru.itmo.delivery.entrypoint.api.model.OrderStatusDto
+import ru.itmo.delivery.entrypoint.api.model.SortDirectionDto
 import ru.itmo.delivery.entrypoint.api.model.StatusHistoryEntryDto
 import ru.itmo.delivery.orders.api.models.ActorType
 import ru.itmo.delivery.orders.api.models.CreateOrderCommand
@@ -16,7 +18,10 @@ import ru.itmo.delivery.orders.api.models.OrderDetails
 import ru.itmo.delivery.orders.api.models.OrderItem
 import ru.itmo.delivery.orders.api.models.OrderItemRequest
 import ru.itmo.delivery.orders.api.models.OrderScope
+import ru.itmo.delivery.orders.api.models.OrderSort
+import ru.itmo.delivery.orders.api.models.OrderSortField
 import ru.itmo.delivery.orders.api.models.OrderStatus
+import ru.itmo.delivery.orders.api.models.SortDirection
 import ru.itmo.delivery.orders.api.models.StatusHistoryEntry
 import ru.itmo.delivery.shared.models.Paged
 
@@ -86,4 +91,15 @@ fun Paged<Order>.toPageDto() = OrderPageDto(
     pageSize = size,
     totalItems = totalItems,
     totalPages = totalPages,
+)
+
+fun ActorTypeDto.toDomain() = ActorType.valueOf(name)
+
+fun OrderSortFieldDto.toDomain() = OrderSortField.valueOf(name)
+
+fun SortDirectionDto.toDomain() = SortDirection.valueOf(name)
+
+fun orderSort(sortBy: OrderSortFieldDto?, sortDirection: SortDirectionDto?) = OrderSort(
+    field = sortBy?.toDomain() ?: OrderSortField.CREATED_AT,
+    direction = sortDirection?.toDomain() ?: SortDirection.DESC,
 )

@@ -6,11 +6,16 @@ import org.springframework.data.mongodb.core.query.Criteria
 import org.springframework.data.mongodb.core.query.Query
 import org.springframework.data.mongodb.core.query.Update
 import org.springframework.stereotype.Repository
+import ru.itmo.delivery.orders.api.models.ActorType
 import ru.itmo.delivery.orders.api.models.Order
 import ru.itmo.delivery.orders.api.models.OrderDetails
+import ru.itmo.delivery.orders.api.models.OrderFilter
 import ru.itmo.delivery.orders.api.models.OrderItem
 import ru.itmo.delivery.orders.api.models.OrderScope
+import ru.itmo.delivery.orders.api.models.OrderSort
+import ru.itmo.delivery.orders.api.models.OrderSortField
 import ru.itmo.delivery.orders.api.models.OrderStatus
+import ru.itmo.delivery.orders.api.models.SortDirection
 import ru.itmo.delivery.orders.api.models.StatusHistoryEntry
 import ru.itmo.delivery.orders.internal.adapters.outbound.dao.CourierAssignment
 import ru.itmo.delivery.orders.internal.adapters.outbound.dao.OrdersDAO
@@ -18,6 +23,7 @@ import ru.itmo.delivery.shared.models.Paged
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.UUID
+import java.util.regex.Pattern
 
 @Repository
 class OrdersMongoDao(
@@ -90,28 +96,61 @@ class OrdersMongoDao(
         scope: OrderScope,
         requesterId: UUID,
         restaurantIds: Collection<UUID>?,
-        status: OrderStatus?,
         page: Int,
         size: Int,
+        filter: OrderFilter,
+        sort: OrderSort,
     ): Paged<Order> {
-        val criteria = when (scope) {
-            OrderScope.CUSTOMER -> Criteria.where("userId").`is`(requesterId)
+        val conditions = mutableListOf(
+            when (scope) {
+                OrderScope.CUSTOMER -> Criteria.where("userId").`is`(requesterId)
 
-            OrderScope.COURIER -> Criteria.where("courierId").`is`(requesterId)
+                OrderScope.COURIER -> Criteria.where("courierId").`is`(requesterId)
 
-            OrderScope.RESTAURANT -> {
-                if (restaurantIds.isNullOrEmpty()) return Paged(emptyList(), page, size, 0)
-                Criteria.where("restaurantId").`in`(restaurantIds)
-            }
-        }
-        if (status != null) criteria.and("status").`is`(status)
+                OrderScope.RESTAURANT -> {
+                    if (restaurantIds.isNullOrEmpty()) return Paged(emptyList(), page, size, 0)
+                    Criteria.where("restaurantId").`in`(restaurantIds)
+                }
+            },
+        )
+        filter.status?.let { conditions += Criteria.where("status").`is`(it) }
+        itemCondition(filter)?.let { conditions += Criteria.where("items").elemMatch(it) }
+        filter.cancelledBy?.let { conditions += cancelledByCondition(it) }
 
-        val query = Query(criteria)
+        val query = Query(Criteria().andOperator(conditions))
         val total = template.count(query, OrderDocument::class.java)
 
-        query.with(Sort.by(Sort.Direction.DESC, "createdAt", "_id")).skip(page.toLong() * size).limit(size)
+        query.with(sort.toMongoSort()).skip(page.toLong() * size).limit(size)
         val orders = template.find(query, OrderDocument::class.java).map { it.toOrder() }
         return Paged(orders, page, size, total)
+    }
+
+    private fun itemCondition(filter: OrderFilter): Criteria? {
+        val byName = filter.itemName?.let { Criteria.where("name").regex(Pattern.quote(it), "i") }
+        val byMenuItem = filter.menuItemId?.let { Criteria.where("menuItemId").`is`(it) }
+
+        return when {
+            byName != null && byMenuItem != null -> Criteria().andOperator(byName, byMenuItem)
+            else -> byName ?: byMenuItem
+        }
+    }
+
+    private fun cancelledByCondition(actor: ActorType) =
+        Criteria.where("history").elemMatch(
+            Criteria.where("status").`is`(OrderStatus.CANCELLED)
+                .and("actorType").`is`(actor),
+        )
+
+    private fun OrderSort.toMongoSort(): Sort {
+        val direction = if (this.direction == SortDirection.ASC) Sort.Direction.ASC else Sort.Direction.DESC
+        val property = when (field) {
+            OrderSortField.CREATED_AT -> "createdAt"
+            OrderSortField.UPDATED_AT -> "updatedAt"
+            OrderSortField.TOTAL_AMOUNT -> "totalAmount"
+            OrderSortField.STATUS -> "status"
+        }
+
+        return Sort.by(direction, property, "_id")
     }
 
     private fun OrderDetails.toDocument() = OrderDocument(

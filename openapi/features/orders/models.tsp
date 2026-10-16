@@ -3,6 +3,8 @@ namespace DeliveryService;
 enum OrderStatus { CREATED, COOKING, READY, IN_DELIVERY, DELIVERED, CANCELLED }
 enum OrderScope { CUSTOMER, RESTAURANT, COURIER }
 enum ActorType { USER, RESTAURANT, SYSTEM }
+enum OrderSortField { CREATED_AT, UPDATED_AT, TOTAL_AMOUNT, STATUS }
+enum SortDirection { ASC, DESC }
 
 model StatusHistoryEntry {
   fromStatus: OrderStatus | null;

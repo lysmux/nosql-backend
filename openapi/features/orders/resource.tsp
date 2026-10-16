@@ -12,8 +12,18 @@ namespace Orders {
   } | OrderCreateError;
 
   @get
-  @doc("scope обязателен: CUSTOMER — свои покупки; RESTAURANT — заказы моих ресторанов (опционально фильтр restaurantId); COURIER — мои назначения. Без status — вся доступная история. Сортировка createdAt DESC, orderId DESC")
-  op list(@query scope: OrderScope, @query restaurantId?: uuid, @query status?: OrderStatus, ...Pagination): OrderPage | OrderReadError;
+  @doc("scope обязателен: CUSTOMER — свои покупки; RESTAURANT — заказы моих ресторанов (опционально фильтр restaurantId); COURIER — мои назначения. Фильтр status; поиск по вложенным полям: itemName — часть названия позиции без учёта регистра, menuItemId — есть позиция с этим блюдом, cancelledBy — заказ отменён этим актором (по истории). Фильтры сочетаются через И. sortBy — поле сортировки, sortDirection — направление; по умолчанию createdAt по убыванию, при равенстве orderId в том же направлении")
+  op list(
+    @query scope: OrderScope,
+    @query restaurantId?: uuid,
+    @query status?: OrderStatus,
+    @query @minLength(1) @maxLength(100) itemName?: string,
+    @query menuItemId?: uuid,
+    @query cancelledBy?: ActorType,
+    @query sortBy?: OrderSortField = OrderSortField.CREATED_AT,
+    @query sortDirection?: SortDirection = SortDirection.DESC,
+    ...Pagination,
+  ): OrderPage | OrderReadError;
 
   @get @route("/{orderId}")
   @doc("Детали доступны клиенту-владельцу, владельцу ресторана заказа или назначенному курьеру с включённым режимом")

@@ -16,9 +16,11 @@ import ru.itmo.delivery.orders.api.models.ActorType
 import ru.itmo.delivery.orders.api.models.CreateOrderCommand
 import ru.itmo.delivery.orders.api.models.Order
 import ru.itmo.delivery.orders.api.models.OrderDetails
+import ru.itmo.delivery.orders.api.models.OrderFilter
 import ru.itmo.delivery.orders.api.models.OrderItem
 import ru.itmo.delivery.orders.api.models.OrderItemRequest
 import ru.itmo.delivery.orders.api.models.OrderScope
+import ru.itmo.delivery.orders.api.models.OrderSort
 import ru.itmo.delivery.orders.api.models.OrderStatus
 import ru.itmo.delivery.orders.api.models.StatusHistoryEntry
 import ru.itmo.delivery.orders.internal.adapters.outbound.dao.OrdersDAO
@@ -82,10 +84,10 @@ class OrdersService(
     override fun list(
         requesterId: UUID,
         scope: OrderScope,
-        restaurantId: UUID?,
-        status: OrderStatus?,
         page: Int,
         size: Int,
+        filter: OrderFilter,
+        sort: OrderSort,
     ): Paged<Order> {
         if (page < 0 || size !in MIN_PAGE_SIZE..MAX_PAGE_SIZE) {
             throw ValidationException("page должен быть >= 0, size от $MIN_PAGE_SIZE до $MAX_PAGE_SIZE")
@@ -94,8 +96,20 @@ class OrdersService(
             throw ForbiddenException("Режим курьера не включён")
         }
 
-        val restaurantIds = if (scope == OrderScope.RESTAURANT) ownedRestaurantIds(requesterId, restaurantId) else null
-        return dao.findPage(scope, requesterId, restaurantIds, status, page, size)
+        val restaurantIds = when (scope) {
+            OrderScope.RESTAURANT -> ownedRestaurantIds(requesterId, filter.restaurantId)
+            else -> null
+        }
+        return dao.findPage(scope, requesterId, restaurantIds, page, size, checkFilter(filter), sort)
+    }
+
+    private fun checkFilter(filter: OrderFilter): OrderFilter {
+        val itemName = filter.itemName?.trim()?.takeIf { it.isNotEmpty() }
+        if (itemName != null && itemName.length > MAX_ITEM_NAME_LENGTH) {
+            throw ValidationException("itemName должен быть от 1 до $MAX_ITEM_NAME_LENGTH символов")
+        }
+
+        return filter.copy(itemName = itemName)
     }
 
     private fun ownedRestaurantIds(requesterId: UUID, restaurantId: UUID?): List<UUID> =
@@ -236,6 +250,7 @@ class OrdersService(
     private companion object {
         const val ORDER_PLACED_REASON = "Заказ оформлен"
         const val MAX_ADDRESS_LENGTH = 500
+        const val MAX_ITEM_NAME_LENGTH = 100
         const val MAX_ITEMS = 100
         const val MAX_QUANTITY = 99
         const val MIN_PAGE_SIZE = 1
