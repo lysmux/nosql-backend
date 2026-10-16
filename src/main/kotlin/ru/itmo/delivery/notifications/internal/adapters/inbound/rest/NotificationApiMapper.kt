@@ -1,5 +1,7 @@
 package ru.itmo.delivery.notifications.internal.adapters.inbound.rest
 
+import ru.itmo.delivery.entrypoint.api.model.ActorTypeDto
+import ru.itmo.delivery.entrypoint.api.model.NotificationAuthorDto
 import ru.itmo.delivery.entrypoint.api.model.NotificationDto
 import ru.itmo.delivery.entrypoint.api.model.NotificationEventTypeDto
 import ru.itmo.delivery.entrypoint.api.model.NotificationPageDto
@@ -17,6 +19,8 @@ fun Notification.toDto() = NotificationDto(
     eventType = eventType.toDto(),
     status = OrderStatusDto.valueOf(status.name),
     text = text,
+    author = NotificationAuthorDto(type = ActorTypeDto.valueOf(author.type.name), id = author.id),
+    reason = reason,
     createdAt = createdAt,
 )
 

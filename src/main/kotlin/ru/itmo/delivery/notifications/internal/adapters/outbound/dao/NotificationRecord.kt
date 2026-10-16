@@ -1,6 +1,7 @@
 package ru.itmo.delivery.notifications.internal.adapters.outbound.dao
 
 import ru.itmo.delivery.notifications.api.models.Notification
+import ru.itmo.delivery.notifications.api.models.NotificationAuthor
 import ru.itmo.delivery.notifications.api.models.NotificationEventType
 import ru.itmo.delivery.orders.api.models.OrderStatus
 import java.time.Instant
@@ -13,6 +14,8 @@ data class NotificationRecord(
     val eventType: NotificationEventType,
     val status: OrderStatus,
     val text: String,
+    val author: NotificationAuthor,
+    val reason: String,
     val createdAt: Instant,
 )
 
@@ -23,5 +26,7 @@ fun NotificationRecord.toNotification() = Notification(
     eventType = eventType,
     status = status,
     text = text,
+    author = author,
+    reason = reason,
     createdAt = createdAt,
 )

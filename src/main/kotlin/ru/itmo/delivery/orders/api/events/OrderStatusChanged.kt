@@ -1,6 +1,7 @@
 package ru.itmo.delivery.orders.api.events
 
 import ru.itmo.delivery.orders.api.models.Order
+import ru.itmo.delivery.orders.api.models.StatusHistoryEntry
 
 enum class OrderEventType {
     ORDER_CREATED,
@@ -10,4 +11,5 @@ enum class OrderEventType {
 data class OrderStatusChanged(
     val order: Order,
     val eventType: OrderEventType,
+    val entry: StatusHistoryEntry,
 )

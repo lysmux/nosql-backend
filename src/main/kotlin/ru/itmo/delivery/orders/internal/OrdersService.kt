@@ -77,7 +77,7 @@ class OrdersService(
         val details = OrderDetails(order, listOf(placed))
 
         dao.save(details)
-        events.publishEvent(OrderStatusChanged(order, OrderEventType.ORDER_CREATED))
+        events.publishEvent(OrderStatusChanged(order, OrderEventType.ORDER_CREATED, placed))
         return details
     }
 
@@ -167,7 +167,7 @@ class OrdersService(
             throw OrderStatusConflictException("Заказ изменён параллельно, повторите запрос")
         }
         releaseCourier(current, step.to)
-        events.publishEvent(OrderStatusChanged(updated, OrderEventType.ORDER_STATUS_CHANGED))
+        events.publishEvent(OrderStatusChanged(updated, OrderEventType.ORDER_STATUS_CHANGED, entry))
         return OrderDetails(updated, details.history + entry)
     }
 

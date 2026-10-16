@@ -38,5 +38,8 @@ class NotificationsMongoDao(
         status = status,
         text = text,
         createdAt = createdAt,
+        author = AuthorDocument(author.type, author.id),
+        reason = reason,
+        schemaVersion = NOTIFICATION_SCHEMA_VERSION,
     )
 }

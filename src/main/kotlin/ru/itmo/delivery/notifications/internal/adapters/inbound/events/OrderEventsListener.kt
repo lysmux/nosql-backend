@@ -11,6 +11,6 @@ class OrderEventsListener(
 ) {
     @EventListener
     fun on(event: OrderStatusChanged) {
-        notifications.createFor(event.order, event.eventType)
+        notifications.createFor(event.order, event.eventType, event.entry)
     }
 }

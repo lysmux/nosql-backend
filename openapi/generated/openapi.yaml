@@ -1647,6 +1647,8 @@ components:
         - eventType
         - status
         - text
+        - author
+        - reason
         - createdAt
       properties:
         notificationId:
@@ -1661,9 +1663,29 @@ components:
           $ref: '#/components/schemas/OrderStatus'
         text:
           type: string
+        author:
+          $ref: '#/components/schemas/NotificationAuthor'
+        reason:
+          type: string
+          description: Причина перехода; legacy у уведомлений, созданных до появления поля
         createdAt:
           type: string
           format: date-time
+    NotificationAuthor:
+      type: object
+      required:
+        - type
+        - id
+      properties:
+        type:
+          $ref: '#/components/schemas/ActorType'
+        id:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/uuid'
+          nullable: true
+          description: null только для SYSTEM
+      description: Кто перевёл заказ в статус, породивший уведомление
     NotificationEventStream:
       type: string
       description: Поток SSE с кадрами NotificationFrame
