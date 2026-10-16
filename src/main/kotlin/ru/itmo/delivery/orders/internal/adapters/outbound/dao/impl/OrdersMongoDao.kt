@@ -12,6 +12,7 @@ import ru.itmo.delivery.orders.api.models.OrderItem
 import ru.itmo.delivery.orders.api.models.OrderScope
 import ru.itmo.delivery.orders.api.models.OrderStatus
 import ru.itmo.delivery.orders.api.models.StatusHistoryEntry
+import ru.itmo.delivery.orders.internal.adapters.outbound.dao.CourierAssignment
 import ru.itmo.delivery.orders.internal.adapters.outbound.dao.OrdersDAO
 import ru.itmo.delivery.shared.models.Paged
 import java.time.Instant
@@ -53,12 +54,12 @@ class OrdersMongoDao(
             OrderDocument::class.java,
         )
 
-    override fun assignFreeCourier(couriers: Collection<UUID>): Int {
+    override fun assignFreeCourier(couriers: Collection<UUID>): CourierAssignment? {
         val oldestUnassigned = Query(
             Criteria.where("status").`is`(OrderStatus.READY)
                 .and("courierId").isNull(),
         ).with(Sort.by(Sort.Direction.ASC, "createdAt", "_id"))
-        val picked = template.findOne(oldestUnassigned, OrderDocument::class.java) ?: return 0
+        val picked = template.findOne(oldestUnassigned, OrderDocument::class.java) ?: return null
 
         val busy = template.findDistinct(
             Query(
@@ -69,7 +70,7 @@ class OrdersMongoDao(
             OrderDocument::class.java,
             UUID::class.java,
         )
-        val courier = (couriers - busy.toSet()).randomOrNull() ?: return 0
+        val courier = (couriers - busy.toSet()).randomOrNull() ?: return null
 
         val stillUnassigned = Query(
             Criteria.where("_id").`is`(picked.id)
@@ -80,7 +81,9 @@ class OrdersMongoDao(
         val update = Update()
             .set("courierId", courier)
             .set("updatedAt", Instant.now().truncatedTo(ChronoUnit.MILLIS))
-        return template.updateFirst(stillUnassigned, update, OrderDocument::class.java).matchedCount.toInt()
+        val matched = template.updateFirst(stillUnassigned, update, OrderDocument::class.java)
+            .matchedCount > 0
+        return if (matched) CourierAssignment(picked.id, courier) else null
     }
 
     override fun findPage(

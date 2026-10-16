@@ -152,8 +152,14 @@ class OrdersService(
         if (!dao.applyTransition(updated, entry)) {
             throw OrderStatusConflictException("Заказ изменён параллельно, повторите запрос")
         }
+        releaseCourier(current, step.to)
         events.publishEvent(OrderStatusChanged(updated, OrderEventType.ORDER_STATUS_CHANGED))
         return OrderDetails(updated, details.history + entry)
+    }
+
+    private fun releaseCourier(order: Order, newStatus: OrderStatus) {
+        val courierId = order.courierId ?: return
+        if (newStatus == OrderStatus.DELIVERED || newStatus == OrderStatus.CANCELLED) users.clearActiveOrder(courierId)
     }
 
     private fun rolesOf(actorId: UUID, order: Order): Set<OrderRole> = buildSet {

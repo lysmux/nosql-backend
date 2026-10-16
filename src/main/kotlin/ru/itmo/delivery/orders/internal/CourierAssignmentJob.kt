@@ -3,14 +3,13 @@ package ru.itmo.delivery.orders.internal
 import org.slf4j.LoggerFactory
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Component
-import ru.itmo.delivery.orders.internal.adapters.outbound.dao.OrdersDAO
 import ru.itmo.delivery.orders.internal.config.AssignmentConfig
 import ru.itmo.delivery.users.api.Users
 import java.util.UUID
 
 @Component
 class CourierAssignmentJob(
-    private val dao: OrdersDAO,
+    private val assigner: CourierAssigner,
     private val users: Users,
     private val config: AssignmentConfig,
 ) {
@@ -25,7 +24,7 @@ class CourierAssignmentJob(
 
     private fun assignOne(couriers: Collection<UUID>): Int =
         try {
-            dao.assignFreeCourier(couriers)
+            if (assigner.assignOne(couriers)) 1 else 0
         } catch (e: DataIntegrityViolationException) {
             log.warn("Courier assignment lost a race on the active-order unique index, retrying on a fresh snapshot")
             log.debug("Assignment contention details", e)

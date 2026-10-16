@@ -19,6 +19,8 @@ interface UsersDAO {
     fun updateCourierMode(id: UUID, enabled: Boolean): User?
 
     fun findCourierIds(): List<UUID>
+
+    fun setActiveOrder(id: UUID, orderId: UUID?)
 }
 
 data class UserCredentials(val userId: UUID, val passwordHash: String)

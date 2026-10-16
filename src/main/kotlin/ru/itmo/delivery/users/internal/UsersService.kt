@@ -65,6 +65,10 @@ class UsersService(
 
     override fun courierIds(): List<UUID> = dao.findCourierIds()
 
+    override fun assignActiveOrder(courierId: UUID, orderId: UUID) = dao.setActiveOrder(courierId, orderId)
+
+    override fun clearActiveOrder(courierId: UUID) = dao.setActiveOrder(courierId, null)
+
     override fun setCourierMode(userId: UUID, enabled: Boolean): User {
         val user = dao.get(userId) ?: throw UserNotFoundException(userId)
 

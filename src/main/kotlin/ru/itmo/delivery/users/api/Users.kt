@@ -17,4 +17,8 @@ interface Users {
     fun setCourierMode(userId: UUID, enabled: Boolean): User
 
     fun courierIds(): List<UUID>
+
+    fun assignActiveOrder(courierId: UUID, orderId: UUID)
+
+    fun clearActiveOrder(courierId: UUID)
 }

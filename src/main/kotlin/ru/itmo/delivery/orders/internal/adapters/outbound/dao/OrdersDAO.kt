@@ -15,7 +15,7 @@ interface OrdersDAO {
 
     fun applyTransition(order: Order, entry: StatusHistoryEntry): Boolean
 
-    fun assignFreeCourier(couriers: Collection<UUID>): Int
+    fun assignFreeCourier(couriers: Collection<UUID>): CourierAssignment?
 
     fun existsActiveByCourier(courierId: UUID): Boolean
 
@@ -28,3 +28,5 @@ interface OrdersDAO {
         size: Int,
     ): Paged<Order>
 }
+
+data class CourierAssignment(val orderId: UUID, val courierId: UUID)

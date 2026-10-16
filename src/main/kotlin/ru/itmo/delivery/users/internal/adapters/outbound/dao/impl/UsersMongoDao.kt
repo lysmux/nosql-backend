@@ -58,6 +58,14 @@ class UsersMongoDao(
             UserDocument::class.java,
         ).map { it.id }
 
+    override fun setActiveOrder(id: UUID, orderId: UUID?) {
+        template.updateFirst(
+            Query(Criteria.where("_id").`is`(id)),
+            Update().set("activeOrderId", orderId),
+            UserDocument::class.java,
+        )
+    }
+
     private fun byEmail(email: String) = Query(Criteria.where("email").`is`(email))
 
     private fun UserDocument.toDomain() = User(

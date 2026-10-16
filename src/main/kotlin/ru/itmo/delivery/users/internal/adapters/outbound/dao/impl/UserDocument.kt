@@ -13,6 +13,7 @@ data class UserDocument(
     val passwordHash: String,
     val courierModeEnabled: Boolean,
     val createdAt: Instant,
+    val activeOrderId: UUID? = null,
 ) {
     companion object {
         const val COLLECTION = "users"
