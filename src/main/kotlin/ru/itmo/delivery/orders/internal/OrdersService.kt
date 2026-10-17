@@ -11,6 +11,7 @@ import ru.itmo.delivery.orders.api.events.OrderEventType
 import ru.itmo.delivery.orders.api.events.OrderStatusChanged
 import ru.itmo.delivery.orders.api.exceptions.OrderItemsConflictException
 import ru.itmo.delivery.orders.api.exceptions.OrderNotFoundException
+import ru.itmo.delivery.orders.api.exceptions.OrderStatusConflictException
 import ru.itmo.delivery.orders.api.models.ActorType
 import ru.itmo.delivery.orders.api.models.CreateOrderCommand
 import ru.itmo.delivery.orders.api.models.Order
@@ -92,13 +93,17 @@ class OrdersService(
         if (scope == OrderScope.COURIER && users.get(requesterId)?.courierModeEnabled != true) {
             throw ForbiddenException("Режим курьера не включён")
         }
-        val restaurantFilter = if (scope == OrderScope.RESTAURANT && restaurantId != null) {
-            restaurants.requireOwned(requesterId, restaurantId).restaurantId
-        } else {
-            null
-        }
-        return dao.findPage(scope, requesterId, restaurantFilter, status, page, size)
+
+        val restaurantIds = if (scope == OrderScope.RESTAURANT) ownedRestaurantIds(requesterId, restaurantId) else null
+        return dao.findPage(scope, requesterId, restaurantIds, status, page, size)
     }
+
+    private fun ownedRestaurantIds(requesterId: UUID, restaurantId: UUID?): List<UUID> =
+        if (restaurantId != null) {
+            listOf(restaurants.requireOwned(requesterId, restaurantId).restaurantId)
+        } else {
+            restaurants.ownedIds(requesterId)
+        }
 
     override fun read(requesterId: UUID, orderId: UUID): OrderDetails {
         val details = dao.findDetails(orderId) ?: throw OrderNotFoundException(orderId)
@@ -123,7 +128,7 @@ class OrdersService(
     override fun cancel(requesterId: UUID, orderId: UUID) = transition(requesterId, orderId, OrderAction.CANCEL)
 
     private fun transition(actorId: UUID, orderId: UUID, action: OrderAction): OrderDetails {
-        val details = dao.findDetailsForUpdate(orderId) ?: throw OrderNotFoundException(orderId)
+        val details = dao.findDetails(orderId) ?: throw OrderNotFoundException(orderId)
         val current = details.order
         val roles = rolesOf(actorId, current)
         if (roles.isEmpty()) throw OrderNotFoundException(orderId)
@@ -143,7 +148,10 @@ class OrdersService(
             reason = step.reason,
             createdAt = timestamp,
         )
-        dao.applyTransition(updated, entry)
+
+        if (!dao.applyTransition(updated, entry)) {
+            throw OrderStatusConflictException("Заказ изменён параллельно, повторите запрос")
+        }
         events.publishEvent(OrderStatusChanged(updated, OrderEventType.ORDER_STATUS_CHANGED))
         return OrderDetails(updated, details.history + entry)
     }
@@ -217,7 +225,7 @@ class OrdersService(
         return total
     }
 
-    private fun now(): Instant = Instant.now().truncatedTo(ChronoUnit.MICROS)
+    private fun now(): Instant = Instant.now().truncatedTo(ChronoUnit.MILLIS)
 
     private companion object {
         const val ORDER_PLACED_REASON = "Заказ оформлен"

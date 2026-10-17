@@ -6,7 +6,6 @@ import ru.itmo.delivery.orders.api.models.OrderScope
 import ru.itmo.delivery.orders.api.models.OrderStatus
 import ru.itmo.delivery.orders.api.models.StatusHistoryEntry
 import ru.itmo.delivery.shared.models.Paged
-import java.time.Instant
 import java.util.UUID
 
 interface OrdersDAO {
@@ -14,16 +13,16 @@ interface OrdersDAO {
 
     fun findDetails(orderId: UUID): OrderDetails?
 
-    fun findDetailsForUpdate(orderId: UUID): OrderDetails?
+    fun applyTransition(order: Order, entry: StatusHistoryEntry): Boolean
 
-    fun applyTransition(order: Order, entry: StatusHistoryEntry)
+    fun assignFreeCourier(couriers: Collection<UUID>): Int
 
-    fun assignFreeCourier(now: Instant): Int
+    fun existsActiveByCourier(courierId: UUID): Boolean
 
     fun findPage(
         scope: OrderScope,
         requesterId: UUID,
-        restaurantId: UUID?,
+        restaurantIds: Collection<UUID>?,
         status: OrderStatus?,
         page: Int,
         size: Int,

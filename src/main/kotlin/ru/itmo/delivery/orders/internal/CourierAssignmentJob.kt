@@ -5,22 +5,27 @@ import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Component
 import ru.itmo.delivery.orders.internal.adapters.outbound.dao.OrdersDAO
 import ru.itmo.delivery.orders.internal.config.AssignmentConfig
-import java.time.Instant
+import ru.itmo.delivery.users.api.Users
+import java.util.UUID
 
 @Component
 class CourierAssignmentJob(
     private val dao: OrdersDAO,
+    private val users: Users,
     private val config: AssignmentConfig,
 ) {
     fun assignPendingOrders() {
+        val couriers = users.courierIds()
+        if (couriers.isEmpty()) return
+
         repeat(config.maxPerTick) {
-            if (assignOne() == 0) return
+            if (assignOne(couriers) == 0) return
         }
     }
 
-    private fun assignOne(): Int =
+    private fun assignOne(couriers: Collection<UUID>): Int =
         try {
-            dao.assignFreeCourier(Instant.now())
+            dao.assignFreeCourier(couriers)
         } catch (e: DataIntegrityViolationException) {
             log.warn("Courier assignment lost a race on the active-order unique index, retrying on a fresh snapshot")
             log.debug("Assignment contention details", e)

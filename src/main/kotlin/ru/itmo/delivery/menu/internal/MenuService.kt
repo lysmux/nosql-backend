@@ -85,7 +85,7 @@ class MenuService(
     private fun patchedDescription(current: String?, patch: MenuItemPatch): String? =
         if (patch.descriptionPresent) checkDescription(patch.description) else current
 
-    private fun now(): Instant = Instant.now().truncatedTo(ChronoUnit.MICROS)
+    private fun now(): Instant = Instant.now().truncatedTo(ChronoUnit.MILLIS)
 
     private fun checkName(name: String): String {
         val trimmed = name.trim()

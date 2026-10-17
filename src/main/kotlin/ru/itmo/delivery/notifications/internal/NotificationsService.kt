@@ -38,7 +38,7 @@ class NotificationsService(
                 eventType = eventType.toNotificationEventType(),
                 status = order.status,
                 text = textFor(order),
-                createdAt = Instant.now().truncatedTo(ChronoUnit.MICROS),
+                createdAt = Instant.now().truncatedTo(ChronoUnit.MILLIS),
             ),
         )
     }

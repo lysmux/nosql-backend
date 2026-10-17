@@ -17,6 +17,8 @@ interface UsersDAO {
     fun existsByEmail(email: String): Boolean
 
     fun updateCourierMode(id: UUID, enabled: Boolean): User?
+
+    fun findCourierIds(): List<UUID>
 }
 
 data class UserCredentials(val userId: UUID, val passwordHash: String)

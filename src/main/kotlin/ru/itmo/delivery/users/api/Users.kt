@@ -15,4 +15,6 @@ interface Users {
     fun exists(id: UUID): Boolean
 
     fun setCourierMode(userId: UUID, enabled: Boolean): User
+
+    fun courierIds(): List<UUID>
 }
