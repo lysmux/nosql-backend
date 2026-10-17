@@ -1,5 +1,5 @@
 include:
-  - component: $CI_SERVER_FQDN/cicd/templates/buildkit@1.0.0
+  - component: $CI_SERVER_FQDN/cicd/templates/buildkit@1.3.0
     inputs:
       job_name: build-image
       stage: build
@@ -7,7 +7,7 @@ include:
         - if: $CI_COMMIT_TAG
         - if: $CI_COMMIT_BRANCH
 
-  - component: $CI_SERVER_FQDN/cicd/templates/release@1.2.0
+  - component: $CI_SERVER_FQDN/cicd/templates/release@1.3.0
     inputs:
       gitops_path: apps/delivery
       environment_name: production
