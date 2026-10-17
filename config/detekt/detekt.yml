@@ -1,0 +1,34 @@
+complexity:
+  TooManyFunctions:
+    allowedFunctionsPerClass: 20
+    allowedFunctionsPerFile: 20
+    allowedFunctionsPerObject: 20
+
+exceptions:
+  TooGenericExceptionCaught:
+    active: false
+
+style:
+  MaxLineLength:
+    maxLineLength: 120
+  MagicNumber:
+    ignorePropertyDeclaration: true
+  ReturnCount:
+    max: 3
+    excludeGuardClauses: true
+  ThrowsCount:
+    active: false
+  WildcardImport:
+    excludeImports:
+      - 'java.util.*'
+      - 'org.springframework.data.mongodb.core.schema.JsonSchemaProperty.*'
+
+ktlint:
+  NoWildcardImports:
+    packagesToUseImportOnDemandProperty: 'java.util.*,org.springframework.data.mongodb.core.schema.JsonSchemaProperty.*'
+  ClassSignature:
+    active: false
+  FunctionExpressionBody:
+    active: false
+  FunctionSignature:
+    active: false

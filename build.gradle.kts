@@ -7,6 +7,7 @@ plugins {
     id("org.springframework.boot") version "4.1.1"
     id("io.spring.dependency-management") version "1.1.7"
     id("org.openapi.generator") version "7.14.0"
+    id("dev.detekt") version "2.0.0-alpha.6"
 }
 
 group = "ru.itmo"
@@ -53,6 +54,20 @@ dependencies {
     runtimeOnly("commons-codec:commons-codec")
     runtimeOnly("org.erlang.otp:jinterface:1.6.1")
     runtimeOnly("javax.xml.bind:jaxb-api:2.3.1")
+
+    detektPlugins("dev.detekt:detekt-rules-ktlint-wrapper:2.0.0-alpha.6")
+}
+
+detekt {
+    config.setFrom("config/detekt/detekt.yml")
+    buildUponDefaultConfig = true
+    basePath = projectDir
+}
+
+configurations.matching { it.name == "detekt" }.all {
+    resolutionStrategy.eachDependency {
+        if (requested.group == "org.jetbrains.kotlin") useVersion("2.4.10")
+    }
 }
 
 val openApiSpec = layout.projectDirectory.file("openapi/generated/openapi.yaml")
