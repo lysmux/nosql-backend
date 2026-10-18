@@ -13,6 +13,7 @@ import ru.itmo.delivery.users.api.exceptions.UserNotFoundException
 import ru.itmo.delivery.users.api.models.User
 import ru.itmo.delivery.users.internal.adapters.outbound.dao.UsersDAO
 import java.time.Instant
+import java.time.temporal.ChronoUnit
 import java.util.UUID
 
 @Service
@@ -30,7 +31,7 @@ class UsersService(
             name = checkName(name),
             email = checkEmail(normalizedEmail),
             courierModeEnabled = false,
-            createdAt = Instant.now(),
+            createdAt = Instant.now().truncatedTo(ChronoUnit.MILLIS),
         )
 
         checkPassword(password)
@@ -61,6 +62,12 @@ class UsersService(
         if (ids.isEmpty()) emptyMap() else dao.getAll(ids)
 
     override fun exists(id: UUID): Boolean = dao.exists(id)
+
+    override fun courierIds(): List<UUID> = dao.findCourierIds()
+
+    override fun assignActiveOrder(courierId: UUID, orderId: UUID) = dao.setActiveOrder(courierId, orderId)
+
+    override fun clearActiveOrder(courierId: UUID) = dao.setActiveOrder(courierId, null)
 
     override fun setCourierMode(userId: UUID, enabled: Boolean): User {
         val user = dao.get(userId) ?: throw UserNotFoundException(userId)

@@ -3,6 +3,7 @@ package ru.itmo.delivery.notifications.internal
 import org.springframework.stereotype.Service
 import ru.itmo.delivery.notifications.api.Notifications
 import ru.itmo.delivery.notifications.api.models.Notification
+import ru.itmo.delivery.notifications.api.models.NotificationAuthor
 import ru.itmo.delivery.notifications.api.models.NotificationEventType
 import ru.itmo.delivery.notifications.internal.adapters.outbound.dao.NotificationRecord
 import ru.itmo.delivery.notifications.internal.adapters.outbound.dao.NotificationsDAO
@@ -10,6 +11,7 @@ import ru.itmo.delivery.notifications.internal.adapters.outbound.dao.toNotificat
 import ru.itmo.delivery.orders.api.events.OrderEventType
 import ru.itmo.delivery.orders.api.models.Order
 import ru.itmo.delivery.orders.api.models.OrderStatus
+import ru.itmo.delivery.orders.api.models.StatusHistoryEntry
 import ru.itmo.delivery.shared.exceptions.ValidationException
 import ru.itmo.delivery.shared.models.Paged
 import java.time.Instant
@@ -29,7 +31,7 @@ class NotificationsService(
         return records.withItems(records.items.map { it.toNotification() })
     }
 
-    fun createFor(order: Order, eventType: OrderEventType) {
+    fun createFor(order: Order, eventType: OrderEventType, entry: StatusHistoryEntry) {
         dao.save(
             NotificationRecord(
                 notificationId = UUID.randomUUID(),
@@ -38,7 +40,9 @@ class NotificationsService(
                 eventType = eventType.toNotificationEventType(),
                 status = order.status,
                 text = textFor(order),
-                createdAt = Instant.now().truncatedTo(ChronoUnit.MICROS),
+                author = NotificationAuthor(entry.actorType, entry.actorId),
+                reason = entry.reason,
+                createdAt = Instant.now().truncatedTo(ChronoUnit.MILLIS),
             ),
         )
     }

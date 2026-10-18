@@ -18,4 +18,6 @@ interface Restaurants {
     fun registerVisit(restaurantId: UUID): Long
 
     fun visits(restaurantId: UUID): Long
+
+    fun ownedIds(ownerId: UUID): List<UUID>
 }

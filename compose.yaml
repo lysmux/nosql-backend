@@ -1,21 +1,6 @@
 name: delivery
 
 services:
-  postgres:
-    image: postgres:17
-    environment:
-      POSTGRES_USER: app
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: delivery
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD", "pg_isready", "-U", "app", "-d", "delivery"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
   riak:
     image: registry.dc.lysmux.dev/cicd/riak-kv:3.4.1
     hostname: riak
@@ -39,16 +24,20 @@ services:
       start_period: 30s
   mongo:
     image: mongo:9
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: root
-      MONGO_INITDB_ROOT_PASSWORD: password
-      MONGO_INITDB_DATABASE: delivery
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
     ports:
       - "27017:27017"
     volumes:
       - mongo_data:/data/db
+      - ./docker/mongo/init-replica-set.sh:/usr/local/bin/init-replica-set.sh:ro
+    post_start:
+      - command: sh /usr/local/bin/init-replica-set.sh
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.hello().isWritablePrimary ? quit(0) : quit(1)"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
 volumes:
-  postgres_data:
   riak_data:
   mongo_data:

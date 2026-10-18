@@ -5,12 +5,16 @@ import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.RestController
 import ru.itmo.delivery.auth.api.currentUserId
 import ru.itmo.delivery.entrypoint.api.OrdersApi
+import ru.itmo.delivery.entrypoint.api.model.ActorTypeDto
 import ru.itmo.delivery.entrypoint.api.model.CreateOrderRequestDto
 import ru.itmo.delivery.entrypoint.api.model.OrderDetailsDto
 import ru.itmo.delivery.entrypoint.api.model.OrderPageDto
 import ru.itmo.delivery.entrypoint.api.model.OrderScopeDto
+import ru.itmo.delivery.entrypoint.api.model.OrderSortFieldDto
 import ru.itmo.delivery.entrypoint.api.model.OrderStatusDto
+import ru.itmo.delivery.entrypoint.api.model.SortDirectionDto
 import ru.itmo.delivery.orders.api.Orders
+import ru.itmo.delivery.orders.api.models.OrderFilter
 import java.util.UUID
 
 @RestController
@@ -25,11 +29,29 @@ class OrdersController(
         scope: OrderScopeDto,
         restaurantId: UUID?,
         status: OrderStatusDto?,
+        itemName: String?,
+        menuItemId: UUID?,
+        cancelledBy: ActorTypeDto?,
+        sortBy: OrderSortFieldDto?,
+        sortDirection: SortDirectionDto?,
         page: Int,
         size: Int,
     ): ResponseEntity<OrderPageDto> =
         ResponseEntity.ok(
-            orders.list(currentUserId(), scope.toDomain(), restaurantId, status?.toDomain(), page, size).toPageDto(),
+            orders.list(
+                requesterId = currentUserId(),
+                scope = scope.toDomain(),
+                page = page,
+                size = size,
+                filter = OrderFilter(
+                    restaurantId = restaurantId,
+                    status = status?.toDomain(),
+                    itemName = itemName,
+                    menuItemId = menuItemId,
+                    cancelledBy = cancelledBy?.toDomain(),
+                ),
+                sort = orderSort(sortBy, sortDirection),
+            ).toPageDto(),
         )
 
     override fun ordersRead(orderId: UUID): ResponseEntity<OrderDetailsDto> =

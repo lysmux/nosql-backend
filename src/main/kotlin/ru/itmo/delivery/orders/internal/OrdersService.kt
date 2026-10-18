@@ -11,13 +11,16 @@ import ru.itmo.delivery.orders.api.events.OrderEventType
 import ru.itmo.delivery.orders.api.events.OrderStatusChanged
 import ru.itmo.delivery.orders.api.exceptions.OrderItemsConflictException
 import ru.itmo.delivery.orders.api.exceptions.OrderNotFoundException
+import ru.itmo.delivery.orders.api.exceptions.OrderStatusConflictException
 import ru.itmo.delivery.orders.api.models.ActorType
 import ru.itmo.delivery.orders.api.models.CreateOrderCommand
 import ru.itmo.delivery.orders.api.models.Order
 import ru.itmo.delivery.orders.api.models.OrderDetails
+import ru.itmo.delivery.orders.api.models.OrderFilter
 import ru.itmo.delivery.orders.api.models.OrderItem
 import ru.itmo.delivery.orders.api.models.OrderItemRequest
 import ru.itmo.delivery.orders.api.models.OrderScope
+import ru.itmo.delivery.orders.api.models.OrderSort
 import ru.itmo.delivery.orders.api.models.OrderStatus
 import ru.itmo.delivery.orders.api.models.StatusHistoryEntry
 import ru.itmo.delivery.orders.internal.adapters.outbound.dao.OrdersDAO
@@ -74,17 +77,17 @@ class OrdersService(
         val details = OrderDetails(order, listOf(placed))
 
         dao.save(details)
-        events.publishEvent(OrderStatusChanged(order, OrderEventType.ORDER_CREATED))
+        events.publishEvent(OrderStatusChanged(order, OrderEventType.ORDER_CREATED, placed))
         return details
     }
 
     override fun list(
         requesterId: UUID,
         scope: OrderScope,
-        restaurantId: UUID?,
-        status: OrderStatus?,
         page: Int,
         size: Int,
+        filter: OrderFilter,
+        sort: OrderSort,
     ): Paged<Order> {
         if (page < 0 || size !in MIN_PAGE_SIZE..MAX_PAGE_SIZE) {
             throw ValidationException("page должен быть >= 0, size от $MIN_PAGE_SIZE до $MAX_PAGE_SIZE")
@@ -92,13 +95,29 @@ class OrdersService(
         if (scope == OrderScope.COURIER && users.get(requesterId)?.courierModeEnabled != true) {
             throw ForbiddenException("Режим курьера не включён")
         }
-        val restaurantFilter = if (scope == OrderScope.RESTAURANT && restaurantId != null) {
-            restaurants.requireOwned(requesterId, restaurantId).restaurantId
-        } else {
-            null
+
+        val restaurantIds = when (scope) {
+            OrderScope.RESTAURANT -> ownedRestaurantIds(requesterId, filter.restaurantId)
+            else -> null
         }
-        return dao.findPage(scope, requesterId, restaurantFilter, status, page, size)
+        return dao.findPage(scope, requesterId, restaurantIds, page, size, checkFilter(filter), sort)
     }
+
+    private fun checkFilter(filter: OrderFilter): OrderFilter {
+        val itemName = filter.itemName?.trim()?.takeIf { it.isNotEmpty() }
+        if (itemName != null && itemName.length > MAX_ITEM_NAME_LENGTH) {
+            throw ValidationException("itemName должен быть от 1 до $MAX_ITEM_NAME_LENGTH символов")
+        }
+
+        return filter.copy(itemName = itemName)
+    }
+
+    private fun ownedRestaurantIds(requesterId: UUID, restaurantId: UUID?): List<UUID> =
+        if (restaurantId != null) {
+            listOf(restaurants.requireOwned(requesterId, restaurantId).restaurantId)
+        } else {
+            restaurants.ownedIds(requesterId)
+        }
 
     override fun read(requesterId: UUID, orderId: UUID): OrderDetails {
         val details = dao.findDetails(orderId) ?: throw OrderNotFoundException(orderId)
@@ -123,7 +142,7 @@ class OrdersService(
     override fun cancel(requesterId: UUID, orderId: UUID) = transition(requesterId, orderId, OrderAction.CANCEL)
 
     private fun transition(actorId: UUID, orderId: UUID, action: OrderAction): OrderDetails {
-        val details = dao.findDetailsForUpdate(orderId) ?: throw OrderNotFoundException(orderId)
+        val details = dao.findDetails(orderId) ?: throw OrderNotFoundException(orderId)
         val current = details.order
         val roles = rolesOf(actorId, current)
         if (roles.isEmpty()) throw OrderNotFoundException(orderId)
@@ -143,9 +162,18 @@ class OrdersService(
             reason = step.reason,
             createdAt = timestamp,
         )
-        dao.applyTransition(updated, entry)
-        events.publishEvent(OrderStatusChanged(updated, OrderEventType.ORDER_STATUS_CHANGED))
+
+        if (!dao.applyTransition(updated, entry)) {
+            throw OrderStatusConflictException("Заказ изменён параллельно, повторите запрос")
+        }
+        releaseCourier(current, step.to)
+        events.publishEvent(OrderStatusChanged(updated, OrderEventType.ORDER_STATUS_CHANGED, entry))
         return OrderDetails(updated, details.history + entry)
+    }
+
+    private fun releaseCourier(order: Order, newStatus: OrderStatus) {
+        val courierId = order.courierId ?: return
+        if (newStatus == OrderStatus.DELIVERED || newStatus == OrderStatus.CANCELLED) users.clearActiveOrder(courierId)
     }
 
     private fun rolesOf(actorId: UUID, order: Order): Set<OrderRole> = buildSet {
@@ -217,11 +245,12 @@ class OrdersService(
         return total
     }
 
-    private fun now(): Instant = Instant.now().truncatedTo(ChronoUnit.MICROS)
+    private fun now(): Instant = Instant.now().truncatedTo(ChronoUnit.MILLIS)
 
     private companion object {
         const val ORDER_PLACED_REASON = "Заказ оформлен"
         const val MAX_ADDRESS_LENGTH = 500
+        const val MAX_ITEM_NAME_LENGTH = 100
         const val MAX_ITEMS = 100
         const val MAX_QUANTITY = 99
         const val MIN_PAGE_SIZE = 1

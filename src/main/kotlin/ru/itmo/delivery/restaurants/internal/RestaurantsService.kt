@@ -12,6 +12,7 @@ import ru.itmo.delivery.shared.exceptions.ServiceUnavailableException
 import ru.itmo.delivery.shared.exceptions.ValidationException
 import ru.itmo.delivery.shared.models.Paged
 import java.time.Instant
+import java.time.temporal.ChronoUnit
 import java.util.UUID
 
 @Service
@@ -25,7 +26,7 @@ class RestaurantsService(
             restaurantId = UUID.randomUUID(),
             ownerId = ownerId,
             name = checkName(name),
-            createdAt = Instant.now(),
+            createdAt = Instant.now().truncatedTo(ChronoUnit.MILLIS),
         )
 
         dao.save(restaurant)
@@ -62,6 +63,8 @@ class RestaurantsService(
     override fun registerVisit(restaurantId: UUID): Long = withVisitCounter(restaurantId) { visits.increment(it) }
 
     override fun visits(restaurantId: UUID): Long = withVisitCounter(restaurantId) { visits.get(it) }
+
+    override fun ownedIds(ownerId: UUID): List<UUID> = dao.findIdsByOwner(ownerId)
 
     private fun withVisitCounter(restaurantId: UUID, operation: (UUID) -> Long): Long {
         get(restaurantId)

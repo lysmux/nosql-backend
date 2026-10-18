@@ -14,4 +14,6 @@ interface RestaurantsDAO {
     fun findAllOrdered(): List<Restaurant>
 
     fun updateName(id: UUID, name: String): Restaurant?
+
+    fun findIdsByOwner(ownerId: UUID): List<UUID>
 }

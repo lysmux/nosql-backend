@@ -15,6 +15,8 @@ import "./features/orders/models.tsp";
 import "./features/orders/resource.tsp";
 import "./features/notifications/models.tsp";
 import "./features/notifications/resource.tsp";
+import "./features/analytics/models.tsp";
+import "./features/analytics/resource.tsp";
 
 using TypeSpec.Http;
 using TypeSpec.OpenAPI;

@@ -3,10 +3,10 @@ import org.springframework.boot.gradle.tasks.run.BootRun
 plugins {
     kotlin("jvm") version "2.4.20"
     kotlin("plugin.spring") version "2.4.20"
-    kotlin("plugin.jpa") version "2.4.20"
     id("org.springframework.boot") version "4.1.1"
     id("io.spring.dependency-management") version "1.1.7"
     id("org.openapi.generator") version "7.14.0"
+    id("dev.detekt") version "2.0.0-alpha.6"
 }
 
 group = "ru.itmo"
@@ -17,12 +17,6 @@ kotlin {
     compilerOptions {
         freeCompilerArgs.add("-Xjsr305=strict")
     }
-}
-
-allOpen {
-    annotation("jakarta.persistence.Entity")
-    annotation("jakarta.persistence.MappedSuperclass")
-    annotation("jakarta.persistence.Embeddable")
 }
 
 repositories {
@@ -37,13 +31,13 @@ dependencies {
     implementation("tools.jackson.module:jackson-module-kotlin")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
 
-    implementation("org.springframework.boot:spring-boot-starter-data-jpa")
-    implementation("org.springframework.boot:spring-boot-starter-liquibase")
-    implementation("org.postgresql:postgresql")
+    implementation("org.springframework.boot:spring-boot-starter-data-mongodb")
+    implementation(platform("io.mongock:mongock-bom:5.5.1"))
+    implementation("io.mongock:mongock-springboot-v3")
+    implementation("io.mongock:mongodb-springdata-v4-driver")
 
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     runtimeOnly("io.micrometer:micrometer-registry-prometheus")
-    runtimeOnly("org.hibernate.orm:hibernate-micrometer")
 
     implementation(files("libs/riak-client-73d87d1.jar"))
     runtimeOnly("com.google.protobuf:protobuf-java:3.25.9")
@@ -53,6 +47,20 @@ dependencies {
     runtimeOnly("commons-codec:commons-codec")
     runtimeOnly("org.erlang.otp:jinterface:1.6.1")
     runtimeOnly("javax.xml.bind:jaxb-api:2.3.1")
+
+    detektPlugins("dev.detekt:detekt-rules-ktlint-wrapper:2.0.0-alpha.6")
+}
+
+detekt {
+    config.setFrom("config/detekt/detekt.yml")
+    buildUponDefaultConfig = true
+    basePath = projectDir
+}
+
+configurations.matching { it.name == "detekt" }.all {
+    resolutionStrategy.eachDependency {
+        if (requested.group == "org.jetbrains.kotlin") useVersion("2.4.10")
+    }
 }
 
 val openApiSpec = layout.projectDirectory.file("openapi/generated/openapi.yaml")
